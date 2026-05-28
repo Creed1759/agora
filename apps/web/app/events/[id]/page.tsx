@@ -135,7 +135,7 @@ export default function EventDetailPage({
                     src="/icons/notification.svg"
                     width={22}
                     height={22}
-                    alt="calendar"
+                    alt="Date"
                   />
                 </div>
                 <span className="text-[18px] sm:text-[19px] font-medium text-black">

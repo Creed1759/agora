@@ -409,7 +409,7 @@ function TimelineEventCard({ event }: { event: TimelineEvent }) {
                   <div className="flex items-center gap-1.5 text-black/70">
                     <Image
                       src={locationImageSrc}
-                      alt="location"
+                      alt={event.location.toLowerCase().includes("discord") ? "Discord" : "Location"}
                       width={16}
                       height={16}
                       className="object-contain"
