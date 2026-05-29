@@ -7,7 +7,7 @@ import { motion } from "framer-motion";
 import { Navbar } from "@/components/layout/navbar";
 import { Footer } from "@/components/layout/footer";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, Home, ExternalLink } from "lucide-react";
+import { CheckCircle2, Home, ExternalLink } from "@/components/ui/icons";
 import { toast } from "sonner";
 
 export default function CreateEventPage() {
