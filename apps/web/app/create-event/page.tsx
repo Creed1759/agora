@@ -7,34 +7,9 @@ import { Navbar } from "@/components/layout/navbar";
 import { Footer } from "@/components/layout/footer";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { createEventSchema, CreateEventInput } from "@/lib/validation";
 import { useIsMounted } from "@/hooks/useIsMounted";
-import { z } from "zod";
 
-const createEventSchema = z.object({
-  title: z.string().trim().min(1, "Event title is required"),
-  startDate: z.string().min(1, "Start date is required"),
-  startTime: z.string().min(1, "Start time is required"),
-  endDate: z.string().optional(),
-  endTime: z.string().optional(),
-  location: z.string().trim().min(1, "Location is required"),
-  description: z.string().optional(),
-  capacity: z
-    .string()
-    .optional()
-    .refine((value) => !value || Number.parseInt(value, 10) > 0, {
-      message: "Capacity must be greater than 0",
-    }),
-  price: z
-    .string()
-    .trim()
-    .min(1, "Price is required (put 0 for free)")
-    .refine((value) => Number.parseFloat(value) >= 0, {
-      message: "Price cannot be negative",
-    }),
-  visibility: z.enum(["Public", "Private"]),
-});
-
-type CreateEventInput = z.infer<typeof createEventSchema>;
 
 export default function CreateEventPage() {
   const router = useRouter();
@@ -220,6 +195,12 @@ export default function CreateEventPage() {
                     />
                   </div>
                 </div>
+
+                {(errors.startDate || errors.startTime) && (
+                  <span className="text-red-500 text-xs font-bold mt-1 ml-10">
+                    {errors.startDate || errors.startTime}
+                  </span>
+                )}
 
                 <div className="flex items-center mt-[18px]">
                   <div className="w-[10px] h-[10px] rounded-[10px] border border-dark-deep/50 bg-transparent shrink-0 relative z-10 ml-3" />
@@ -442,27 +423,29 @@ export default function CreateEventPage() {
               {errors.price && <span className="text-red-500 text-sm font-bold absolute bottom-2 left-6">{errors.price}</span>}
             </div>
 
-            <div className="flex justify-end gap-4 mt-6 mr-4">
+<div className="flex justify-end gap-4 mt-6 mr-4">
               <Button
                 type="button"
                 variant="secondary"
                 className="w-[212px] h-[50px] rounded-[32px]"
-                onClick={() => setFormData({
-                  title: "",
-                  startDate: "",
-                  startTime: "",
-                  endDate: "",
-                  endTime: "",
-                  location: "",
-                  description: "",
-                  capacity: "",
-                  price: "",
-                  visibility: "Public",
-                })}
+                onClick={() => {
+                  setFormData({
+                    title: "",
+                    startDate: "",
+                    startTime: "",
+                    endDate: "",
+                    endTime: "",
+                    location: "",
+                    description: "",
+                    capacity: "",
+                    price: "",
+                    visibility: "Public",
+                  });
+                  setErrors({});
+                }}
               >
                 Clear Event
               </Button>
-
               <Button
                 type="submit"
                 variant="primary"
@@ -480,10 +463,9 @@ export default function CreateEventPage() {
                 )}
               </Button>
             </div>
-          </div>
+            </div>
         </div>
       </form>
-
       <Footer />
     </main>
   );
