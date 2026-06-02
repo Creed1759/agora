@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Navbar } from "@/components/layout/navbar";
@@ -9,12 +9,38 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { createEventSchema, CreateEventInput } from "@/lib/validation";
 import { useIsMounted } from "@/hooks/useIsMounted";
+import { z } from "zod";
+
+const eventSchema = z.object({
+  title: z.string().min(1, "Event title is required"),
+  startDate: z.string().min(1, "Start date is required"),
+  startTime: z.string().min(1, "Start time is required"),
+  location: z.string().min(1, "Location is required"),
+  price: z.string().min(1, "Price is required (put 0 for free)"),
+  endDate: z.string().optional(),
+  endTime: z.string().optional(),
+  description: z.string().optional(),
+  capacity: z.string().optional(),
+  visibility: z.enum(["Public", "Private"]),
+});
 
 
 export default function CreateEventPage() {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [organizer, setOrganizer] = useState<{ name: string; wallet: string } | null>(null);
   const isMounted = useIsMounted();
+
+  useEffect(() => {
+    fetch("/api/profile")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data?.profile) {
+          setOrganizer({ name: data.profile.displayName, wallet: data.profile.address });
+        }
+      })
+      .catch(() => null);
+  }, []);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -53,21 +79,19 @@ export default function CreateEventPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const parsed = createEventSchema.safeParse(formData);
 
-    if (!parsed.success) {
-      const nextErrors: Record<string, string> = {};
-      for (const issue of parsed.error.issues) {
-        const field = issue.path[0];
-        if (typeof field === "string" && !nextErrors[field]) {
-          nextErrors[field] = issue.message;
-        }
+    const result = eventSchema.safeParse(formData);
+    if (!result.success) {
+      const fieldErrors: Record<string, string> = {};
+      for (const issue of result.error.issues) {
+        const field = issue.path[0] as string;
+        fieldErrors[field] = issue.message;
       }
-
-      setErrors(nextErrors);
+      setErrors(fieldErrors);
       toast.error("Please fill in all required fields");
       return;
     }
+    setErrors({});
 
     setErrors({});
     setIsSubmitting(true);
@@ -75,35 +99,28 @@ export default function CreateEventPage() {
       const values = parsed.data;
       const response = await fetch("/api/events", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: values.title,
-          startsAt: getStartsAt(values),
-          location: values.location,
-          category: "Tech", // Default category
-          organizerName: "Stellar Community", // Mocked
-          organizerWallet: "GD...MOCK_WALLET", // Mocked
-          description: values.description,
-          ticketPrice: Number.parseFloat(values.price) || 0,
-          totalTickets: values.capacity ? Number.parseInt(values.capacity, 10) : 100,
-          followersOnly: values.visibility === "Private",
+          title: formData.title,
+          startsAt: `${formData.startDate}T${formData.startTime}:00.000Z`,
+          location: formData.location,
+          category: "Tech",
+          organizerName: organizer?.name ?? "Agora Organizer",
+          organizerWallet: organizer?.wallet ?? "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+          description: formData.description,
+          ticketPrice: parseFloat(formData.price) || 0,
+          totalTickets: parseInt(formData.capacity) || 100,
+          followersOnly: formData.visibility === "Private",
         }),
       });
 
       const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to create event");
-      }
+      if (!response.ok) throw new Error(data.error || "Failed to create event");
 
       toast.success("Event created successfully!");
       router.push(`/events/${data.event.id}`);
     } catch (error: unknown) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Something went wrong";
-      toast.error(errorMessage);
+      toast.error(error instanceof Error ? error.message : "Something went wrong");
     } finally {
       setIsSubmitting(false);
     }
