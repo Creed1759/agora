@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import { Toaster } from "sonner";
 import "./globals.css";
 import { CookieBanner } from "@/components/layout/cookie-banner";
+import { ErrorBoundary } from "@/components/layout/error-boundary";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -48,7 +49,9 @@ export default function RootLayout({
           <LoadingBar />
         </Suspense>
         <Toaster position="top-right" richColors />
-        {children}
+        <ErrorBoundary>
+          {children}
+        </ErrorBoundary>
         <CookieBanner />
       </body>
     </html>
