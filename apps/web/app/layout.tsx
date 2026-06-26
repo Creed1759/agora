@@ -36,6 +36,7 @@ export const metadata: Metadata = {
 
 import { Suspense } from "react";
 import LoadingBar from "@/components/ui/loading-bar";
+import { ThemeProvider } from "@/components/providers/theme-context";
 
 export default function RootLayout({
   children,
@@ -50,7 +51,9 @@ export default function RootLayout({
         </Suspense>
         <Toaster position="top-right" richColors />
         <ErrorBoundary>
-          {children}
+          <ThemeProvider>
+            {children}
+          </ThemeProvider>
         </ErrorBoundary>
         <CookieBanner />
       </body>
