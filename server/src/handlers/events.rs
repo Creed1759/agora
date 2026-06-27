@@ -640,6 +640,35 @@ mod tests {
     }
 
     #[test]
+    fn test_submit_rating_cache_key_format() {
+        let event_id = Uuid::new_v4();
+        let cache_key = format!("event:detail:{}", event_id);
+        assert!(cache_key.starts_with("event:detail:"));
+        assert!(cache_key.contains(&event_id.to_string()));
+    }
+
+    #[test]
+    fn test_event_rating_item_fields() {
+        let item = EventRatingItem {
+            rating: 4,
+            review: Some("Great event!".to_string()),
+            created_at: Utc::now(),
+        };
+        assert_eq!(item.rating, 4);
+        assert_eq!(item.review.as_deref(), Some("Great event!"));
+    }
+
+    #[test]
+    fn test_event_rating_item_no_review() {
+        let item = EventRatingItem {
+            rating: 3,
+            review: None,
+            created_at: Utc::now(),
+        };
+        assert!(item.review.is_none());
+    }
+
+    #[test]
     fn test_ratings_summary_distribution_zero_filled() {
         let mut distribution = std::collections::HashMap::new();
         for star in 1i16..=5 {
@@ -1680,7 +1709,7 @@ pub async fn create_event(
 /// # Endpoint
 /// POST `/api/v1/events/:id/rate`
 pub async fn submit_event_rating(
-    State(state): State<EventState>,
+    State(mut state): State<EventState>,
     Path(event_id): Path<Uuid>,
     Json(payload): Json<SubmitEventRatingRequest>,
 ) -> Response {
@@ -1807,6 +1836,15 @@ pub async fn submit_event_rating(
     if let Err(e) = tx.commit().await {
         tracing::error!("Failed to commit rating transaction: {:?}", e);
         return AppError::DatabaseError(e).into_response();
+    }
+
+    let cache_key = format!("event:detail:{}", event_id);
+    if let Err(e) = state.redis.delete(&cache_key).await {
+        tracing::warn!(
+            "Failed to invalidate event detail cache after rating for {}: {:?}",
+            event_id,
+            e
+        );
     }
 
     let response = SubmitEventRatingResponse {
@@ -2793,6 +2831,80 @@ pub struct RatingsSummary {
     pub average: f64,
     pub total: i64,
     pub distribution: std::collections::HashMap<String, i64>,
+}
+
+/// A single rating item returned by the list ratings endpoint (ticket ID omitted for privacy).
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct EventRatingItem {
+    pub rating: i16,
+    pub review: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// GET /api/v1/events/:id/ratings
+///
+/// Returns a paginated list of ratings for the given event.
+/// Ticket IDs are not included in the response to preserve attendee privacy.
+/// Returns 404 if the event does not exist.
+pub async fn list_event_ratings(
+    State(state): State<EventState>,
+    Path(event_id): Path<Uuid>,
+    Query(pagination): Query<PaginationParams>,
+) -> Response {
+    let exists = match sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS(SELECT 1 FROM events WHERE id = $1)",
+    )
+    .bind(event_id)
+    .fetch_one(&state.pool)
+    .await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!("Failed to check event existence for ratings: {:?}", e);
+            return AppError::DatabaseError(e).into_response();
+        }
+    };
+
+    if !exists {
+        return AppError::NotFound(format!("Event with id '{}' not found", event_id))
+            .into_response();
+    }
+
+    let validated = pagination.validate();
+
+    let total = match sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM event_ratings WHERE event_id = $1",
+    )
+    .bind(event_id)
+    .fetch_one(&state.pool)
+    .await
+    {
+        Ok(n) => n,
+        Err(e) => {
+            tracing::error!("Failed to count event ratings: {:?}", e);
+            return AppError::DatabaseError(e).into_response();
+        }
+    };
+
+    let items = match sqlx::query_as::<_, EventRatingItem>(
+        "SELECT rating, review, created_at FROM event_ratings \
+         WHERE event_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3",
+    )
+    .bind(event_id)
+    .bind(validated.limit())
+    .bind(validated.offset())
+    .fetch_all(&state.pool)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::error!("Failed to fetch event ratings: {:?}", e);
+            return AppError::DatabaseError(e).into_response();
+        }
+    };
+
+    let response = PaginatedResponse::new(items, validated, total);
+    success(response, "Ratings retrieved successfully").into_response()
 }
 
 /// GET /api/v1/events/:id/ratings/summary
