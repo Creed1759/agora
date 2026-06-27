@@ -66,6 +66,16 @@ fn default_page_size() -> u32 {
     20
 }
 
+impl SearchParams {
+    fn validate_page_size(&self) -> Result<(), String> {
+        if self.page_size == 0 || self.page_size > 100 {
+            Err("page_size must be between 1 and 100".to_string())
+        } else {
+            Ok(())
+        }
+    }
+}
+
 /// Cache TTL for event details (5 minutes)
 const EVENT_CACHE_TTL: Duration = Duration::from_secs(300);
 
@@ -769,6 +779,64 @@ mod tests {
     }
 
     #[test]
+    fn test_search_params_page_size_valid() {
+        for size in [1u32, 20, 50, 100] {
+            let params = SearchParams {
+                q: None,
+                category_id: None,
+                category_ids: None,
+                min_price: None,
+                max_price: None,
+                date_from: None,
+                date_to: None,
+                location: None,
+                ticket_type: None,
+                page: 1,
+                page_size: size,
+            };
+            assert!(params.validate_page_size().is_ok(), "page_size={} should be valid", size);
+        }
+    }
+
+    #[test]
+    fn test_search_params_page_size_zero_rejected() {
+        let params = SearchParams {
+            q: None,
+            category_id: None,
+            category_ids: None,
+            min_price: None,
+            max_price: None,
+            date_from: None,
+            date_to: None,
+            location: None,
+            ticket_type: None,
+            page: 1,
+            page_size: 0,
+        };
+        let err = params.validate_page_size().unwrap_err();
+        assert!(err.contains("page_size must be between 1 and 100"));
+    }
+
+    #[test]
+    fn test_search_params_page_size_above_max_rejected() {
+        let params = SearchParams {
+            q: None,
+            category_id: None,
+            category_ids: None,
+            min_price: None,
+            max_price: None,
+            date_from: None,
+            date_to: None,
+            location: None,
+            ticket_type: None,
+            page: 1,
+            page_size: 101,
+        };
+        let err = params.validate_page_size().unwrap_err();
+        assert!(err.contains("page_size must be between 1 and 100"));
+    }
+
+    #[test]
     fn test_search_params_ticket_type() {
         let params = SearchParams {
             q: None,
@@ -984,6 +1052,21 @@ mod tests {
 
         let err = filters.validate_sort().unwrap_err();
         assert!(err.contains("Invalid sort_order value 'sideways'"));
+    }
+
+    #[test]
+    fn test_keyword_search_clause_includes_location() {
+        // Mirrors the format string used inside search_events for the `q` param.
+        let param_count = 1usize;
+        let clause = format!(
+            "(e.title ILIKE ${0} OR e.description ILIKE ${0} OR e.location ILIKE ${0})",
+            param_count
+        );
+        assert!(
+            clause.contains("e.location ILIKE $1"),
+            "keyword search must include location column, got: {}",
+            clause
+        );
     }
 }
 
@@ -1880,6 +1963,11 @@ pub async fn search_events(
     State(mut state): State<EventState>,
     Query(params): Query<SearchParams>,
 ) -> Response {
+    if let Err(msg) = params.validate_page_size() {
+        return AppError::ValidationError(msg).into_response();
+    }
+
+    let start = std::time::Instant::now();
     let pagination = PaginationParams {
         page: params.page,
         page_size: params.page_size,
@@ -1925,12 +2013,12 @@ pub async fn search_events(
     let mut where_clauses = vec!["1=1".to_string()];
     let mut param_count = 0;
 
-    // Keyword search in title and description
+    // Keyword search in title, description, and location
     if params.q.is_some() {
         param_count += 1;
         where_clauses.push(format!(
-            "(e.title ILIKE ${} OR e.description ILIKE ${})",
-            param_count, param_count
+            "(e.title ILIKE ${0} OR e.description ILIKE ${0} OR e.location ILIKE ${0})",
+            param_count
         ));
     }
 
