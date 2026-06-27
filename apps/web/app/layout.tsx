@@ -43,6 +43,7 @@ export const metadata: Metadata = {
 
 import { Suspense } from "react";
 import LoadingBar from "@/components/ui/loading-bar";
+import { ThemeProvider } from "@/components/providers/theme-context";
 
 export default function RootLayout({
   children,
