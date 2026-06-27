@@ -54,7 +54,6 @@ use crate::handlers::{
         delete_profile, get_my_profile, get_organizer_stats, get_profile_by_address,
         list_my_transactions, patch_profile, upsert_profile, ProfileState,
     },
-    qr_payload::{delete_qr_payload, generate_qr_payload, list_event_qr_codes, list_qr_payloads, mark_qr_used, verify_qr_payload},
     rates::{get_rates, RatesState},
     soroban_listener::{spawn_listener, ListenerConfig},
     ws::{ws_purchases_handler, PurchaseBroadcaster},
